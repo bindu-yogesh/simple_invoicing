@@ -7,36 +7,64 @@ export type InvoiceDueSort =
   | 'due-date-asc'
   | 'customer-asc';
 
+const validSortOptions: InvoiceDueSort[] = [
+  'default',
+  'amount-desc',
+  'due-date-asc',
+  'customer-asc',
+];
+
+export function parseInvoiceDueSort(
+  value: string | null,
+): InvoiceDueSort {
+  return validSortOptions.includes(value as InvoiceDueSort)
+    ? (value as InvoiceDueSort)
+    : 'default';
+}
+
 export function sortDueInvoices(
   invoices: Invoice[],
   sort: InvoiceDueSort,
 ): Invoice[] {
-  // Keep the API's original order when the default is selected.
+  // Sorting is page-local: only the invoices loaded for the current page are sorted.
   if (sort === 'default') {
     return invoices;
   }
 
   return [...invoices].sort((a, b) => {
+    let result = 0;
+
     switch (sort) {
       case 'amount-desc':
-        return b.outstanding_amount - a.outstanding_amount;
+        result = b.outstanding_amount - a.outstanding_amount;
+        break;
 
       case 'due-date-asc': {
-        // Invoices without a due date appear after dated invoices.
-        if (!a.due_date) return b.due_date ? 1 : 0;
-        if (!b.due_date) return -1;
-        return a.due_date.localeCompare(b.due_date);
+        // Missing due dates always sort last.
+        if (!a.due_date && b.due_date) return 1;
+        if (a.due_date && !b.due_date) return -1;
+        if (a.due_date && b.due_date) {
+          result = a.due_date.localeCompare(b.due_date);
+        }
+        break;
       }
 
       case 'customer-asc': {
-        const nameA = (a.ledger_name ?? '').toLowerCase();
-        const nameB = (b.ledger_name ?? '').toLowerCase();
+        // Missing customer names always sort last.
+        const nameA = a.ledger_name?.trim() ?? '';
+        const nameB = b.ledger_name?.trim() ?? '';
 
-        return nameA < nameB ? -1 : nameA > nameB ? 1 : 0;
+        if (!nameA && nameB) return 1;
+        if (nameA && !nameB) return -1;
+
+        result = nameA.localeCompare(nameB, undefined, {
+          sensitivity: 'base',
+        });
+        break;
       }
-
-      default:
-        return 0;
     }
+
+    // Use invoice ID as a deterministic tie-breaker.
+    return result || a.id - b.id;
   });
 }

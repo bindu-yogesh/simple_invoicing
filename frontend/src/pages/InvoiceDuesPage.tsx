@@ -18,7 +18,11 @@ import OverdueBadge from '../components/OverdueBadge';
 import DuesAgeingStrip from '../components/DuesAgeingStrip';
 import EmptyState from '../components/EmptyState';
 import LoadingState from '../components/LoadingState';
-import { sortDueInvoices, type InvoiceDueSort } from '../utils/invoiceDuesSorting';
+import {
+  parseInvoiceDueSort,
+  sortDueInvoices,
+  type InvoiceDueSort,
+} from '../utils/invoiceDuesSorting';
 
 type DueFilterMode = 'all' | 'overdue' | 'next7' | 'next15' | 'custom-days' | 'exact-date';
 
@@ -73,13 +77,9 @@ function dueBadgeLabel(dueInDays: number | null) {
 export default function InvoiceDuesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const sortParam = searchParams.get('sort');
-  const sortOrder: InvoiceDueSort =
-    sortParam === 'amount-desc' ||
-    sortParam === 'due-date-asc' ||
-    sortParam === 'customer-asc'
-      ? sortParam
-      : 'default';
+  const sortOrder: InvoiceDueSort = parseInvoiceDueSort(
+    searchParams.get('sort'),
+  );
 
   function handleSortChange(value: InvoiceDueSort) {
     const nextParams = new URLSearchParams(searchParams);
@@ -326,6 +326,9 @@ export default function InvoiceDuesPage() {
             <option value="due-date-asc">Oldest due date first</option>
             <option value="customer-asc">Customer name: A–Z</option>
           </select>
+          <p className="section-copy">
+            Sorting applies only to invoices on the current page.
+          </p>
         </div>
         <div className="field">
           <label htmlFor="dues-search">Search</label>
