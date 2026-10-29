@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { MessageCircle } from 'lucide-react';
 import { fetchCompanyProfile, fetchDueInvoicePage, fetchInvoiceById, fetchLedgers, type DueInvoiceFilters } from '../features/invoices/api';
 import type { CompanyProfile, Invoice, Ledger } from '../types/api';
@@ -18,6 +18,7 @@ import OverdueBadge from '../components/OverdueBadge';
 import DuesAgeingStrip from '../components/DuesAgeingStrip';
 import EmptyState from '../components/EmptyState';
 import LoadingState from '../components/LoadingState';
+import { sortDueInvoices, type InvoiceDueSort } from '../utils/invoiceDuesSorting';
 
 type DueFilterMode = 'all' | 'overdue' | 'next7' | 'next15' | 'custom-days' | 'exact-date';
 
@@ -70,6 +71,27 @@ function dueBadgeLabel(dueInDays: number | null) {
 }
 
 export default function InvoiceDuesPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const sortParam = searchParams.get('sort');
+  const sortOrder: InvoiceDueSort =
+    sortParam === 'amount-desc' ||
+    sortParam === 'due-date-asc' ||
+    sortParam === 'customer-asc'
+      ? sortParam
+      : 'default';
+
+  function handleSortChange(value: InvoiceDueSort) {
+    const nextParams = new URLSearchParams(searchParams);
+
+    if (value === 'default') {
+      nextParams.delete('sort');
+    } else {
+      nextParams.set('sort', value);
+    }
+
+    setSearchParams(nextParams, { replace: true });
+  }
   const [company, setCompany] = useState<CompanyProfile | null>(null);
   const [ledgers, setLedgers] = useState<Ledger[]>([]);
   const [items, setItems] = useState<Invoice[]>([]);
@@ -92,6 +114,10 @@ export default function InvoiceDuesPage() {
   const [remindersSuccess, setRemindersSuccess] = useState('');
 
   const currencyCode = company?.currency_code || 'INR';
+  const sortedItems = useMemo(
+    () => sortDueInvoices(items, sortOrder),
+    [items, sortOrder],
+  );
   const dueWindow = useMemo(() => buildDueWindow(mode, customDays, exactDate), [mode, customDays, exactDate]);
 
   useEffect(() => {
@@ -170,7 +196,7 @@ export default function InvoiceDuesPage() {
     downloadCsv(
       `invoice_dues_${new Date().toISOString().slice(0, 10)}.csv`,
       ['Customer', 'Invoice number', 'Invoice date', 'Due date', 'Total', 'Amount due'],
-      items.map((invoice) => [
+      sortedItems.map((invoice) => [
         invoice.ledger_name ?? '',
         invoice.invoice_number ?? `#${invoice.id}`,
         invoice.invoice_date,
@@ -277,6 +303,7 @@ export default function InvoiceDuesPage() {
                 setCustomDays(30);
                 setExactDate('');
                 setPage(1);
+                handleSortChange('default');
               }}
             >
               Reset filters
@@ -284,6 +311,22 @@ export default function InvoiceDuesPage() {
           </>
         )}
       >
+        <div className="field">
+          <label htmlFor="dues-sort">Sort invoices</label>
+          <select
+            id="dues-sort"
+            className="input"
+            value={sortOrder}
+            onChange={(event) =>
+              handleSortChange(event.target.value as InvoiceDueSort)
+            }
+          >
+            <option value="default">Default order</option>
+            <option value="amount-desc">Amount due: high to low</option>
+            <option value="due-date-asc">Oldest due date first</option>
+            <option value="customer-asc">Customer name: A–Z</option>
+          </select>
+        </div>
         <div className="field">
           <label htmlFor="dues-search">Search</label>
           <input
@@ -407,7 +450,7 @@ export default function InvoiceDuesPage() {
               <EmptyState message="No invoices match your due filters. Try adjusting the due window or search." />
             ) : null}
             {!loading
-              ? items.map((invoice) => {
+              ? sortedItems.map((invoice) => {
                   const whatsappNumber = toWhatsAppNumber(invoice.ledger_phone);
                   const whatsappUrl = whatsappNumber
                     ? buildWhatsAppUrl(
